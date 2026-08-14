@@ -2,7 +2,7 @@ import Foundation
 
 enum PTTError: Error, LocalizedError, Equatable {
     case notConnected
-    case timedOut(context: String)
+    case timedOut(context: String, screenSnapshot: String)
     case invalidCredentials
     case accountLoggedInElsewhere
     case boardNotFound(String)
@@ -14,8 +14,12 @@ enum PTTError: Error, LocalizedError, Equatable {
         switch self {
         case .notConnected:
             return "尚未連線到 PTT"
-        case .timedOut(let context):
-            return "等待逾時（\(context)），連線可能已中斷"
+        case .timedOut(let context, let snapshot):
+            let trimmed = snapshot.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                return "等待逾時（\(context)），連線可能已中斷或伺服器沒有回應"
+            }
+            return "等待逾時（\(context)）。目前畫面內容：\n\(trimmed)"
         case .invalidCredentials:
             return "帳號或密碼錯誤"
         case .accountLoggedInElsewhere:

@@ -277,38 +277,45 @@ actor PTTSession {
 
     // MARK: - Low-level interaction engine
 
+    /// Sends `input`, then repeatedly checks the current screen against
+    /// `rules` and waits for the next chunk of data. A `.respond` rule is
+    /// allowed to fire again the next time it matches — e.g. PTT showing a
+    /// second, unrelated "press any key" screen right after the first — but
+    /// never twice in a row for the *same* screen content, so it won't
+    /// double-answer a prompt the server just hasn't caught up with yet.
     private func interact(send input: String? = nil, rules: [PTTRule], timeout: TimeInterval) async throws {
         if let input {
             try await telnet.send(input)
         }
-        var fired = Set<Int>()
+        var lastAnsweredText: [Int: String] = [:]
         let deadline = Date().addingTimeInterval(timeout)
 
         while true {
             let text = screen.fullText()
-            for (i, rule) in rules.enumerated() where !fired.contains(i) {
+            for (i, rule) in rules.enumerated() {
                 guard rule.match(text) else { continue }
                 switch rule.action(text) {
                 case .respond(let payload):
-                    fired.insert(i)
+                    guard lastAnsweredText[i] != text else { continue }
+                    lastAnsweredText[i] = text
                     try await telnet.send(payload)
                 case .stop:
                     return
                 case .fail(let error):
                     throw error
                 case .ignore:
-                    fired.insert(i)
+                    break
                 }
             }
             let remaining = deadline.timeIntervalSinceNow
             guard remaining > 0 else {
                 if rules.isEmpty { return } // plain "send and don't wait for anything" calls
-                throw PTTError.timedOut(context: input ?? "interact")
+                throw PTTError.timedOut(context: input ?? "interact", screenSnapshot: text)
             }
             guard let chunk = try await nextChunk(timeout: remaining) else {
                 // Nothing arrived before the deadline (or the connection closed).
                 if rules.isEmpty { return }
-                throw PTTError.timedOut(context: input ?? "interact")
+                throw PTTError.timedOut(context: input ?? "interact", screenSnapshot: text)
             }
             screen.feed(chunk)
         }
