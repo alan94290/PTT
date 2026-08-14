@@ -58,11 +58,11 @@ actor PTTSession {
         screen.reset()
 
         readerTask = Task { [telnet] in
-            let stream = await telnet.incomingBytes
+            let stream = telnet.incomingBytes
             for await chunk in stream {
-                await self.enqueue(chunk)
+                self.enqueue(chunk)
             }
-            await self.markStreamEnded()
+            self.markStreamEnded()
         }
 
         // Absorb the initial banner burst before we start driving the login.

@@ -1,6 +1,26 @@
 import Foundation
 import Network
 
+/// A checked continuation may only be resumed once, but `NWConnection`'s
+/// `stateUpdateHandler` can fire from a non-actor-isolated queue and could in
+/// principle report more than one terminal state. This guards the
+/// resume-exactly-once invariant with a lock instead of a captured `var`, so
+/// it stays safe (and warning-free under strict concurrency checking) no
+/// matter which queue the handler runs on.
+final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasRun = false
+
+    func run(_ body: () -> Void) {
+        lock.lock()
+        let alreadyRan = hasRun
+        hasRun = true
+        lock.unlock()
+        guard !alreadyRan else { return }
+        body()
+    }
+}
+
 enum TelnetError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
@@ -37,15 +57,15 @@ actor TelnetClient {
         self.connection = conn
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            var didResume = false
+            let resumeGuard = ResumeOnce()
             conn.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    if !didResume { didResume = true; cont.resume() }
+                    resumeGuard.run { cont.resume() }
                 case .failed(let error):
-                    if !didResume { didResume = true; cont.resume(throwing: TelnetError.connectionFailed(error.localizedDescription)) }
+                    resumeGuard.run { cont.resume(throwing: TelnetError.connectionFailed(error.localizedDescription)) }
                 case .cancelled:
-                    if !didResume { didResume = true; cont.resume(throwing: TelnetError.connectionFailed("cancelled")) }
+                    resumeGuard.run { cont.resume(throwing: TelnetError.connectionFailed("cancelled")) }
                 default:
                     break
                 }
