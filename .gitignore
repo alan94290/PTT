@@ -30,6 +30,13 @@ playground.xcworkspace
 # .swiftpm
 
 .build/
+DerivedData/
+
+# This project's .xcodeproj is generated from project.yml via `xcodegen generate` —
+# don't commit the generated project, just the source of truth.
+*.xcodeproj
+Sources/PTT/Resources/Info.plist
+Sources/PTT/Resources/PTT.entitlements
 
 # CocoaPods
 #
