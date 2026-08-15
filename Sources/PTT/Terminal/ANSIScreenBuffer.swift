@@ -32,7 +32,7 @@ final class ANSIScreenBuffer {
     private var pendingLeadByte: UInt8?
 
     private static let big5Encoding: String.Encoding = {
-        let cfEncoding = CFStringBuiltInEncodings.big5.rawValue
+        let cfEncoding = CFStringEncoding(CFStringEncodings.big5.rawValue)
         let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
         return String.Encoding(rawValue: nsEncoding)
     }()
