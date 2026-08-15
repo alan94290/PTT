@@ -2,9 +2,9 @@ import Foundation
 
 /// A minimal VT100/ANSI terminal emulator sized to PTT's fixed 80x24 screen.
 ///
-/// PTT (and every other Telnet BBS) doesn't expose a data API — the "protocol"
-/// is a stream of bytes that a real terminal renders into a character grid.
-/// To read board lists, articles, and push comments we have to do the same
+/// PTT (and every other BBS) doesn't expose a data API — the "protocol" is a
+/// stream of bytes that a real terminal renders into a character grid. To
+/// read board lists, articles, and push comments we have to do the same
 /// rendering ourselves, then read the resulting grid as text. This type owns
 /// that rendering; `PTTScreenParser` reads the result.
 final class ANSIScreenBuffer {
@@ -23,8 +23,8 @@ final class ANSIScreenBuffer {
     private var state: ParseState = .normal
     private var csiParams: String = ""
 
-    /// PTT's telnet interface sends Big5 (specifically the Big5-UAO variant
-    /// BBS clients use), not UTF-8 — confirmed by a live capture where ASCII
+    /// PTT's BBS backend sends Big5 (specifically the Big5-UAO variant BBS
+    /// clients use), not UTF-8 — confirmed by a live capture where ASCII
     /// fragments in the welcome banner decoded fine under a UTF-8 assumption
     /// but every Chinese character came out as mojibake. Big5 is a 1-or-2-byte
     /// encoding: bytes below 0x80 are plain ASCII, and a lead byte >= 0x80 is

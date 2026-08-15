@@ -19,25 +19,25 @@ enum ReplyDestination {
     }
 }
 
-/// Drives a PTT Telnet session end-to-end: connect, log in, browse boards and
-/// articles, push/reply/post. Every action here is built the same way a human
-/// would use PTT — send keystrokes, read the redrawn screen, react — because
-/// that's the only interface PTT has. See `PTTKey` and `PTTScreen` for the
-/// exact keystrokes/markers this relies on.
+/// Drives a PTT session end-to-end over PTT's WebSocket bridge: connect, log
+/// in, browse boards and articles, push/reply/post. Every action here is
+/// built the same way a human would use PTT — send keystrokes, read the
+/// redrawn screen, react — because that's the only interface PTT has. See
+/// `PTTKey` and `PTTScreen` for the exact keystrokes/markers this relies on.
 ///
 /// IMPORTANT: this talks to real PTT accounts. Actions like push/post/reply
 /// are irreversible on a live board. The keystroke sequences below are based
 /// on publicly documented PTT behavior and the long-established PyPtt
 /// automation library, but have not been exercised against a live server in
-/// this environment (no outbound Telnet here) — verify carefully with a
-/// low-stakes account before relying on them.
+/// this environment (no outbound network access here) — verify carefully
+/// with a low-stakes account before relying on them.
 actor PTTSession {
     /// PTT's own UI has exactly one cursor/screen at a time, so the app is
     /// built around a single shared session rather than juggling multiple
     /// independent connections.
     static let shared = PTTSession()
 
-    private let telnet = TelnetClient()
+    private let transport = WebSocketTerminalClient()
     private let screen = ANSIScreenBuffer()
 
     private var pendingChunks: [[UInt8]] = []
@@ -50,15 +50,15 @@ actor PTTSession {
 
     // MARK: - Connection lifecycle
 
-    func connect(host: String = "ptt.cc", port: UInt16 = 23) async throws {
-        try await telnet.connect(host: host, port: port)
+    func connect() async throws {
+        try await transport.connect()
         isConnected = true
         pendingChunks = []
         streamEnded = false
         screen.reset()
 
-        readerTask = Task { [telnet] in
-            let stream = telnet.incomingBytes
+        readerTask = Task { [transport] in
+            let stream = transport.incomingBytes
             for await chunk in stream {
                 self.enqueue(chunk)
             }
@@ -71,7 +71,7 @@ actor PTTSession {
 
     func disconnect() async {
         readerTask?.cancel()
-        await telnet.disconnect()
+        await transport.disconnect()
         isConnected = false
         username = nil
         currentBoard = nil
@@ -285,7 +285,7 @@ actor PTTSession {
     /// double-answer a prompt the server just hasn't caught up with yet.
     private func interact(send input: String? = nil, rules: [PTTRule], timeout: TimeInterval) async throws {
         if let input {
-            try await telnet.send(input)
+            try await transport.send(input)
         }
         var lastAnsweredText: [Int: String] = [:]
         let deadline = Date().addingTimeInterval(timeout)
@@ -298,7 +298,7 @@ actor PTTSession {
                 case .respond(let payload):
                     guard lastAnsweredText[i] != text else { continue }
                     lastAnsweredText[i] = text
-                    try await telnet.send(payload)
+                    try await transport.send(payload)
                 case .stop:
                     return
                 case .fail(let error):
@@ -326,7 +326,7 @@ actor PTTSession {
     /// success marker to wait for (unlike `interact`, this never times out
     /// the whole call just because the server takes its time settling).
     private func sendAndDrain(_ input: String, quiet: TimeInterval = 0.6, timeout: TimeInterval) async throws {
-        try await telnet.send(input)
+        try await transport.send(input)
         try? await drain(quiet: quiet, timeout: timeout)
     }
 

@@ -2,7 +2,7 @@ import XCTest
 @testable import PTT
 
 final class ANSIScreenBufferTests: XCTestCase {
-    /// PTT's telnet interface sends Big5, not UTF-8 — see the comment on
+    /// PTT's BBS backend sends Big5, not UTF-8 — see the comment on
     /// `ANSIScreenBuffer.pendingLeadByte`. Tests that feed Chinese text need
     /// to encode it the same way the real server does.
     private static let big5Encoding: String.Encoding = {

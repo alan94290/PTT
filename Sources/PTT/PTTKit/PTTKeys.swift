@@ -1,6 +1,7 @@
 import Foundation
 
-/// Keystrokes PTT's BBS UI expects, as raw strings sent over Telnet.
+/// Keystrokes PTT's BBS UI expects, as raw strings sent over the terminal
+/// session (PTT's WebSocket bridge — PTT retired plaintext Telnet).
 ///
 /// These match the key bindings used by the long-running, widely-used PyPtt
 /// automation library (github.com/PyPtt/PyPtt), which is the closest thing

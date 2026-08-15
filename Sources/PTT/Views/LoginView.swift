@@ -18,7 +18,7 @@ struct LoginView: View {
                             .foregroundStyle(.tint)
                         Text("PTT 批踢踢實業坊")
                             .font(.title2.bold())
-                        Text("透過 Telnet 直連 ptt.cc，以你的 PTT 帳號登入")
+                        Text("透過加密的 WebSocket 連線直連 ptt.cc，以你的 PTT 帳號登入")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
