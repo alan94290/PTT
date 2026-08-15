@@ -82,9 +82,19 @@ actor TelnetClient {
         continuation.finish()
     }
 
+    private static let big5Encoding: String.Encoding = {
+        let cfEncoding = CFStringBuiltInEncodings.big5.rawValue
+        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
+        return String.Encoding(rawValue: nsEncoding)
+    }()
+
     func send(_ string: String) async throws {
         guard let connection else { throw TelnetError.notConnected }
-        let data = Data(string.utf8)
+        // PTT's telnet interface speaks Big5, not UTF-8 — encode outgoing text
+        // (IDs, passwords, push/post/reply content) to match, or the server
+        // sees garbage for anything outside ASCII. Characters Big5 can't
+        // represent (e.g. emoji) are dropped rather than corrupting the stream.
+        let data = string.data(using: Self.big5Encoding, allowLossyConversion: true) ?? Data(string.utf8)
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             connection.send(content: data, completion: .contentProcessed { error in
                 if let error {

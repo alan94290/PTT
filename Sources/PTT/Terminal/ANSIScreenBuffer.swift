@@ -23,8 +23,19 @@ final class ANSIScreenBuffer {
     private var state: ParseState = .normal
     private var csiParams: String = ""
 
-    private var utf8Pending: [UInt8] = []
-    private var utf8ExpectedContinuations = 0
+    /// PTT's telnet interface sends Big5 (specifically the Big5-UAO variant
+    /// BBS clients use), not UTF-8 — confirmed by a live capture where ASCII
+    /// fragments in the welcome banner decoded fine under a UTF-8 assumption
+    /// but every Chinese character came out as mojibake. Big5 is a 1-or-2-byte
+    /// encoding: bytes below 0x80 are plain ASCII, and a lead byte >= 0x80 is
+    /// always immediately followed by exactly one trail byte.
+    private var pendingLeadByte: UInt8?
+
+    private static let big5Encoding: String.Encoding = {
+        let cfEncoding = CFStringBuiltInEncodings.big5.rawValue
+        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
+        return String.Encoding(rawValue: nsEncoding)
+    }()
 
     private var fg: TerminalColor = .defaultColor
     private var bg: TerminalColor = .defaultColor
@@ -47,8 +58,7 @@ final class ANSIScreenBuffer {
         reverse = false
         state = .normal
         csiParams = ""
-        utf8Pending = []
-        utf8ExpectedContinuations = 0
+        pendingLeadByte = nil
     }
 
     func feed(_ bytes: [UInt8]) {
@@ -71,19 +81,10 @@ final class ANSIScreenBuffer {
     }
 
     private func processNormal(_ byte: UInt8) {
-        if utf8ExpectedContinuations > 0 {
-            if byte & 0xC0 == 0x80 {
-                utf8Pending.append(byte)
-                utf8ExpectedContinuations -= 1
-                if utf8ExpectedContinuations == 0 {
-                    emitUTF8Sequence()
-                }
-                return
-            } else {
-                // Malformed sequence: drop what we had and reprocess this byte fresh.
-                utf8Pending = []
-                utf8ExpectedContinuations = 0
-            }
+        if let lead = pendingLeadByte {
+            pendingLeadByte = nil
+            emitBig5Pair(lead, byte)
+            return
         }
 
         if byte == 0x1B { // ESC
@@ -91,17 +92,8 @@ final class ANSIScreenBuffer {
             return
         }
 
-        if byte >= 0xF0 {
-            utf8Pending = [byte]
-            utf8ExpectedContinuations = 3
-            return
-        } else if byte >= 0xE0 {
-            utf8Pending = [byte]
-            utf8ExpectedContinuations = 2
-            return
-        } else if byte >= 0xC0 {
-            utf8Pending = [byte]
-            utf8ExpectedContinuations = 1
+        if byte >= 0x80 {
+            pendingLeadByte = byte
             return
         }
 
@@ -153,11 +145,11 @@ final class ANSIScreenBuffer {
         }
     }
 
-    private func emitUTF8Sequence() {
-        defer { utf8Pending = [] }
-        guard let scalar = String(bytes: utf8Pending, encoding: .utf8)?.unicodeScalars.first else { return }
-        let character = Character(scalar)
-        writeChar(character, width: Self.isWide(scalar) ? 2 : 1)
+    private func emitBig5Pair(_ lead: UInt8, _ trail: UInt8) {
+        guard let character = String(bytes: [lead, trail], encoding: Self.big5Encoding)?.first else {
+            return // Not a valid Big5 pair — drop it rather than corrupt the grid.
+        }
+        writeChar(character, width: 2) // every decodable Big5 pair is a full-width glyph.
     }
 
     // MARK: - Grid writes
@@ -299,27 +291,5 @@ final class ANSIScreenBuffer {
 
     func fullText() -> String {
         plainLines().joined(separator: "\n")
-    }
-
-    // MARK: - East Asian width
-
-    private static func isWide(_ scalar: Unicode.Scalar) -> Bool {
-        let v = scalar.value
-        switch v {
-        case 0x1100...0x115F, // Hangul Jamo
-             0x2E80...0x303E, // CJK Radicals, Kangxi, CJK Symbols/Punctuation
-             0x3041...0x33FF, // Hiragana .. CJK Compat
-             0x3400...0x4DBF, // CJK Ext A
-             0x4E00...0x9FFF, // CJK Unified Ideographs
-             0xA000...0xA4CF, // Yi
-             0xAC00...0xD7A3, // Hangul Syllables
-             0xF900...0xFAFF, // CJK Compat Ideographs
-             0xFE30...0xFE4F, // CJK Compat Forms
-             0xFF00...0xFF60, // Fullwidth Forms
-             0xFFE0...0xFFE6:
-            return true
-        default:
-            return false
-        }
     }
 }
